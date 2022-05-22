@@ -1,6 +1,2 @@
-
 // cli entry
-fn main(){
-
-}
-
+fn main() {}

@@ -4,9 +4,18 @@ version = "0.1.0"
 authors = ["Damilare Akinlaja damilare@zenturi.co"]
 edition = "2021"
 
+
+[lib]
+path = "src/lib.rs"
+
 [dependencies]
 num_enum = {version = "0.5.7"}
 strum = "0.24"
+enum_dispatch = "0.3.8"
 strum_macros = "0.24.0"
-comet = { git = "https://github.com/Starlight-JS/comet", branch = "multi-threaded" }
-comet-extra = { git = "https://github.com/Starlight-JS/comet", branch = "multi-threaded"}
+stickyimmix = {path = "../stickyimmix"}
+scanner-rust = "2.0.16"
+# comet = { git = "https://github.com/Starlight-JS/comet", branch = "multi-threaded" }
+# comet-extra = { git = "https://github.com/Starlight-JS/comet", branch = "multi-threaded"}
+
+

@@ -1,8 +1,6 @@
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 extern crate strum;
-#[macro_use]
-extern crate strum_macros;
 
 use strum_macros::IntoStaticStr;
 
@@ -19,10 +17,6 @@ use strum_macros::IntoStaticStr;
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
-
-
-
 
 #[derive(IntoPrimitive, TryFromPrimitive, IntoStaticStr)]
 #[repr(u8)]

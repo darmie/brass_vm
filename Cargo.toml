@@ -2,8 +2,11 @@
 
 
 members = [
-    "crates/brass"
+    "crates/brass",
+    "crates/stickyimmix"
 ]
+
+
 
 
 
