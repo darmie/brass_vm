@@ -4,9 +4,11 @@ use scanner_rust::generic_array::typenum::UInt;
 
 use crate::decoder::{Decode, Decoder};
 use crate::errors::{DecodeError, DecodeErrorKind};
+use crate::native::Native;
+use crate::op::{Op, Opcode, OP_NARGS};
 use crate::types::{
-    EnumConstruct, EnumType, FuncType, ObjField, ObjProto, ObjType, TypeKind, ValueType,
-    ValueTypeU, VirtualType,
+    Constant, EnumConstruct, EnumType, FuncType, HLFunction, ObjField, ObjProto, ObjType, TypeKind,
+    ValueType, ValueTypeU, VirtualType,
 };
 
 // Copyright 2022 Zenturi Software Co.
@@ -46,10 +48,14 @@ pub struct Code {
     pub floats: Vec<f64>,
     pub nbytes: usize,
     pub nfunctions: usize,
+    pub functions: Vec<HLFunction>,
     pub nconstants: usize,
+    pub constants: Vec<Constant>,
     pub entrypoint: u32,
     pub nglobals: usize,
+    pub globals: Vec<ValueType>,
     pub nnatives: usize,
+    pub natives: Vec<Native>,
     pub hasdebug: u32,
     pub version: i8,
     pub bytes: Vec<u8>,
@@ -84,6 +90,10 @@ impl Code {
             ndebugfiles: 0,
             debugfiles: Vec::new(),
             debugfiles_lens: Vec::new(),
+            globals: Vec::new(),
+            natives: Vec::new(),
+            functions: Vec::new(),
+            constants: Vec::new(),
         }
     }
 
@@ -176,7 +186,6 @@ impl Code {
                 t.union = ValueTypeU::FuncType(fun);
             }
             TypeKind::HDYNOBJ | TypeKind::HSTRUCT => {
-                // Todo: decode dynamic obj and structs
                 let name = Code::read_ustring(decoder)?;
                 let super_index = INDEX(decoder)?;
                 let mut obj = ObjType {
@@ -325,6 +334,108 @@ impl Code {
         Ok(strings)
     }
 
+    pub fn read_function(decoder: &mut Decoder) -> Result<HLFunction, DecodeError> {
+        let mut f = HLFunction {
+            t: Code::get_type(decoder)?,
+            findex: UINDEX(decoder)?,
+            nregs: UINDEX(decoder)?,
+            nops: UINDEX(decoder)?,
+            regs: Vec::new(),
+            ops: Vec::new(),
+            debug: Vec::new(),
+        };
+
+        for i in 0..f.nregs {
+            f.regs.insert(i, Code::get_type(decoder)?);
+        }
+
+        for i in 0..f.nops {
+            let op = Code::read_opcode(decoder)?;
+            f.ops.insert(i, op);
+        }
+
+        Ok(f)
+    }
+
+    pub fn read_opcode(decoder: &mut Decoder) -> Result<Opcode, DecodeError> {
+        let n = i8::decode(decoder)?;
+        let op = Op::try_from(n).unwrap();
+        if op == Op::OLast {
+            return Err(DecodeError::with_info(
+                DecodeErrorKind::InvalidOpcode,
+                decoder.file_position,
+            ));
+        }
+
+        let mut res = Opcode::default();
+
+        let i = OP_NARGS.into_iter().nth(n.try_into().unwrap()).unwrap();
+        match i {
+            0 => {}
+            1 => {
+                res.p1 = INDEX(decoder)?;
+            }
+            2 => {
+                res.p1 = INDEX(decoder)?;
+                res.p2 = INDEX(decoder)?;
+            }
+            3 => {
+                res.p1 = INDEX(decoder)?;
+                res.p2 = INDEX(decoder)?;
+                res.p3 = INDEX(decoder)?;
+            }
+            4 => {
+                res.p1 = INDEX(decoder)?;
+                res.p2 = INDEX(decoder)?;
+                res.p3 = INDEX(decoder)?;
+                res.extra.insert(0, INDEX(decoder)?);
+            }
+            -1 => match op {
+                Op::OCallN | Op::OCallClosure | Op::OCallMethod | Op::OCallThis | Op::OMakeEnum => {
+                    res.p1 = INDEX(decoder)?;
+                    res.p2 = INDEX(decoder)?;
+                    res.p3 = u8::decode(decoder)?.into();
+                    res.extra = vec![0; res.p3.try_into().unwrap()];
+
+                    for i in 0..res.p3 {
+                        res.extra.insert(i.try_into().unwrap(), INDEX(decoder)?);
+                    }
+                }
+                Op::OSwitch => {
+                    res.p1 = UINDEX(decoder)?.try_into().unwrap();
+                    res.p2 = UINDEX(decoder)?.try_into().unwrap();
+
+                    res.extra = vec![0; res.p2.try_into().unwrap()];
+
+                    for i in 0..res.p2 {
+                        res.extra.insert(i.try_into().unwrap(), INDEX(decoder)?);
+                    }
+                    res.p3 = UINDEX(decoder)?.try_into().unwrap();
+                }
+                _ => {
+                    return Err(DecodeError::with_info(
+                        DecodeErrorKind::CouldNotProcessOpcode,
+                        decoder.file_position,
+                    ));
+                }
+            },
+            _ => {
+                let size = OP_NARGS.into_iter().nth(n.try_into().unwrap()).unwrap() - 3;
+                res.p1 = INDEX(decoder)?;
+                res.p2 = INDEX(decoder)?;
+                res.p3 = INDEX(decoder)?;
+
+                res.extra = vec![0; size.try_into().unwrap()];
+
+                for i in 0..size {
+                    res.extra.insert(i.try_into().unwrap(), INDEX(decoder)?);
+                }
+            }
+        }
+
+        Ok(res)
+    }
+
     pub fn read(buf: &[u8]) -> Result<Self, DecodeError> {
         let mut decoder = Decoder::new(buf);
         let mut c = Code::new();
@@ -399,15 +510,68 @@ impl Code {
 
         if c.hasdebug == 1 {
             c.ndebugfiles = UINDEX(&mut decoder)?;
-            c.debugfiles = Code::read_strings(&mut decoder, c.ndebugfiles, &mut c.debugfiles_lens)?;
+            decoder.code.debugfiles =
+                Code::read_strings(&mut decoder, c.ndebugfiles, &mut c.debugfiles_lens)?;
         }
+
+        c.types = vec![ValueType::default(); c.ntypes];
 
         for i in 0..c.ntypes {
             let mut t = ValueType::default();
+            decoder.code = c.clone();
             Code::read_type(&mut decoder, &mut t)?;
+            decoder.code.types.insert(i, t);
+            c = decoder.code.clone();
         }
 
-        decoder.code = c;
+        c.globals = vec![ValueType::default(); c.nglobals];
+        for i in 0..c.nglobals {
+            decoder.code = c.clone();
+            let t = Code::get_type(&mut decoder)?;
+            decoder.code.globals.insert(i, t);
+            c = decoder.code.clone();
+        }
+
+        for i in 0..c.nnatives {
+            decoder.code = c.clone();
+            c.natives.insert(
+                i,
+                Native {
+                    lib: Code::read_string(&mut decoder)?,
+                    name: Code::read_string(&mut decoder)?,
+                    t: Code::get_type(&mut decoder)?,
+                    findex: UINDEX(&mut decoder)?,
+                },
+            );
+            c = decoder.code.clone();
+        }
+
+        for i in 0..c.nfunctions {
+            decoder.code = c.clone();
+            let f = Code::read_function(&mut decoder)?;
+            c.functions.insert(i, f);
+            if c.hasdebug == 1 {
+                // Todo: read debug infos
+            }
+            c = decoder.code.clone();
+        }
+
+        for i in 0..c.nconstants {
+            let mut k = Constant {
+                global: UINDEX(&mut decoder)?.try_into().unwrap(),
+                nfields: UINDEX(&mut decoder)?,
+                fields: Vec::new(),
+            };
+
+            for j in 0..k.nfields {
+                k.fields
+                    .insert(j, UINDEX(&mut decoder)?.try_into().unwrap());
+            }
+
+            c.constants.insert(i, k);
+            decoder.code = c.clone();
+        }
+
         Ok(decoder.code)
     }
 }

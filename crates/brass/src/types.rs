@@ -3,6 +3,9 @@ use std::any::Any;
 use num_enum::IntoPrimitive;
 use num_enum::TryFromPrimitive;
 
+use crate::op::Op;
+use crate::op::Opcode;
+
 // Copyright 2022 Zenturi Software Co.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -139,3 +142,21 @@ pub struct EnumConstruct {
 
 #[derive(Clone)]
 pub struct RuntimeObj {}
+
+#[derive(Clone)]
+pub struct HLFunction {
+    pub t:ValueType,
+    pub findex:usize,
+    pub nregs:usize,
+    pub nops:usize,
+    pub regs:Vec<ValueType>,
+    pub ops:Vec<Opcode>,
+    pub debug:Vec<String>
+}
+
+#[derive(Clone)]
+pub struct Constant {
+    pub global:u32,
+    pub nfields:usize,
+    pub fields:Vec::<u32>,
+}

@@ -5,6 +5,8 @@ pub enum DecodeErrorKind {
     NoMoreData,
     InvalidType,
     InvalidTypeIndex,
+    InvalidOpcode,
+    CouldNotProcessOpcode,
     CouldNotReadIndex,
     CouldNotReadStringAtIndex,
     InvalidStringIndex,

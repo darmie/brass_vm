@@ -20,4 +20,5 @@ mod types;
 mod decoder;
 mod errors;
 mod code;
+mod native;
 

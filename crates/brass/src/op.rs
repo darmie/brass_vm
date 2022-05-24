@@ -18,8 +18,10 @@ use strum_macros::IntoStaticStr;
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[derive(Clone)]
 #[derive(IntoPrimitive, TryFromPrimitive, IntoStaticStr)]
-#[repr(u8)]
+#[derive(PartialEq)]
+#[repr(i8)]
 pub enum Op {
     OMov = 0,
     OInt = 1,
@@ -143,3 +145,19 @@ pub static OP_NARGS: [i8; 100] = [
     2, 2, 2, 2, 0, 1, 1, 1, -1, 1, 2, 1, 3, 3, 3, 3, 3, 3, 3, 3, 1, 2, 2, 2, 2, 2, 2, 2, -1, 2, 2,
     4, 3, 0, 2, 3, 0, 0,
 ];
+
+
+#[derive(Clone)]
+pub struct Opcode {
+    pub op:Op,
+    pub p1:i32,
+    pub p2:i32,
+    pub p3:i32,
+    pub extra: Vec<i32>
+}
+
+impl Opcode {
+    pub fn default() -> Self {
+        return Opcode { op: Op::ONop, p1: -1, p2: -1, p3: -1, extra: Vec::new() }
+    }
+}
