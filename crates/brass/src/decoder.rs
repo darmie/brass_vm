@@ -50,6 +50,21 @@ impl<'input> Decoder<'input> {
         }
     }
 
+    pub fn read_bytes_vec(&mut self, buf: &mut Vec<u8>) -> Result<(), DecodeError> {
+        if buf.len() > self.buf.len() {
+            Err(DecodeError::with_info(
+                DecodeErrorKind::NoMoreData,
+                self.file_position,
+            ))
+        } else {
+            let sz = buf.len();
+            buf.copy_from_slice(&self.buf[..sz]);
+            self.buf = &self.buf[buf.len()..];
+            self.file_position += buf.len();
+            Ok(())
+        }
+    }
+
     pub fn read<T: Decode<'input>>(&mut self) -> Result<T, DecodeError> {
         T::decode(self)
     }

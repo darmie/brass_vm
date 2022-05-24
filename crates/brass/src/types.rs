@@ -1,14 +1,7 @@
-use std::io;
+use std::any::Any;
 
-
-
-use enum_dispatch::enum_dispatch;
 use num_enum::IntoPrimitive;
 use num_enum::TryFromPrimitive;
-
-use crate::code::Code;
-use crate::errors::DecodeError;
-
 
 // Copyright 2022 Zenturi Software Co.
 //
@@ -24,9 +17,10 @@ use crate::errors::DecodeError;
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[derive(Clone, Copy)]
 #[derive(IntoPrimitive, TryFromPrimitive)]
-#[repr(u8)]
-enum TypeKind {
+#[repr(u32)]
+pub enum TypeKind {
     HVOID = 0,
     HUI8 = 1,
     HUI16 = 2,
@@ -49,14 +43,14 @@ enum TypeKind {
     HNULL = 19,
     HMETHOD = 20,
     HSTRUCT = 21,
+    HPACKED = 22,
     // ---------
-    HLAST = 22,
-    // HForceInt = 0x7FFFFFFF,
+    HLAST = 23,
+    HForceInt = 0x7FFFFFFF,
 }
 
 #[derive(Clone)]
-#[enum_dispatch]
-pub enum ValueType {
+pub enum ValueTypeU {
     FuncType(FuncType),
     ObjType(ObjType),
     VirtualType(VirtualType),
@@ -64,40 +58,84 @@ pub enum ValueType {
     Ref(Box<ValueType>),
     Abstract(String),
     Null(()),
-    Void(())
+    Void(()),
 }
 
-// #[enum_dispatch(ValueType)]
-// trait ValueTypeIntoCode<'input>: Sized + 'input {
-//     fn read(&self, code: &mut Code, decoder: &mut crate::decoder::Decoder<'input>) -> Result<(), DecodeError>;
-// }
+#[derive(Clone)]
+pub struct ValueType {
+    pub union: ValueTypeU,
+    pub abs_name: Option<String>,
+    pub tparam: Box<ValueType>,
+    pub kind:TypeKind,
+}
 
+impl ValueType {
+    pub fn default() -> Self {
+        return ValueType { union: ValueTypeU::Null(()), abs_name: None, tparam: Box::new(ValueType::default()), kind: TypeKind::HNULL }
+    }
+}
 
 #[derive(Clone)]
 pub struct FuncType {
-    pub args:Vec<ValueType>,
-    pub ret: Box<ValueType>
+    pub args: Vec<ValueType>,
+    pub nargs: usize,
+    pub ret: Box<ValueType>,
 }
 
 
 
 #[derive(Clone)]
 pub struct ObjType {
-    pub name:String,
-    pub super_type:Option<Box<ValueType>>,
+    pub name: String,
+    pub super_type: Box<ValueType>,
     pub fields: Vec<ObjField>,
+    pub nfields:usize,
+    pub nproto:usize,
+    pub nbindings:usize,
     pub proto: Vec<ObjProto>,
+    pub bindings: Vec<u32>,
+    pub global_value: *const dyn Any,
+    pub rt:Option<RuntimeObj>
 }
 
 #[derive(Clone)]
 pub struct ObjField {
-    
+    pub name:String,
+    pub hashed_name:i32,
+    pub t:ValueType
 }
 #[derive(Clone)]
-pub struct ObjProto {}
+pub struct ObjProto {
+    pub name:String,
+    pub hashed_name:i32,
+    pub findex:usize,
+    pub pindex:i32
+}
 
 #[derive(Clone)]
-pub struct VirtualType {}
+pub struct VirtualType {
+    pub nfields:usize,
+    pub fields:Vec<ObjField>,
+}
 
 #[derive(Clone)]
-pub struct EnumType {}
+pub struct EnumType {
+    pub name:String,
+    pub nconstructs:usize,
+    pub constructs:Vec<EnumConstruct>,
+    pub global_value: *const dyn Any
+}
+
+#[derive(Clone)]
+pub struct EnumConstruct {
+    pub name:String,
+    pub nparams:usize,
+    pub params:Vec<ValueType>,
+    pub size:usize,
+    pub hasptr:bool,
+    pub offsets:Vec<i32>
+}
+
+
+#[derive(Clone)]
+pub struct RuntimeObj {}

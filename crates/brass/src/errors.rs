@@ -3,6 +3,7 @@ pub enum DecodeErrorKind {
     InvalidBytecodeHeader,
     UnsupportedBytecodeVersion,
     NoMoreData,
+    InvalidType,
     InvalidTypeIndex,
     CouldNotReadIndex,
     CouldNotReadStringAtIndex,
