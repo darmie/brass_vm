@@ -178,10 +178,10 @@ impl Code {
             TypeKind::HDYNOBJ | TypeKind::HSTRUCT => {
                 // Todo: decode dynamic obj and structs
                 let name = Code::read_ustring(decoder)?;
-                let superIndex = INDEX(decoder)?;
+                let super_index = INDEX(decoder)?;
                 let mut obj = ObjType {
                     name,
-                    super_type: if superIndex < 0 {
+                    super_type: if super_index < 0 {
                         Box::new(ValueType::default())
                     } else {
                         Box::new(
@@ -190,7 +190,7 @@ impl Code {
                                 .types
                                 .clone()
                                 .into_iter()
-                                .nth(superIndex.try_into().unwrap())
+                                .nth(super_index.try_into().unwrap())
                                 .unwrap(),
                         )
                     },
