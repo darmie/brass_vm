@@ -1,5 +1,3 @@
-
-
 use std::num::Wrapping;
 
 use crate::decoder::{Decode, Decoder};
@@ -34,7 +32,7 @@ fn UINDEX(decoder: &mut Decoder) -> Result<usize, DecodeError> {
         //     DecodeErrorKind::NegativeIndex,
         //     decoder.file_position,
         // ));
-       return Ok(0);
+        return Ok(0);
     }
     Ok(i.try_into().unwrap())
 }
@@ -442,7 +440,7 @@ impl Code {
                     res.p3 = u8::decode(decoder)?.into();
                     let extra = vec![0; res.p3.try_into().unwrap()];
                     res.extra = extra;
-                   
+
                     for i in 0..res.p3 {
                         res.extra.insert(i.try_into().unwrap(), INDEX(decoder)?);
                     }
@@ -454,7 +452,8 @@ impl Code {
                     res.extra = vec![0; res.p2.try_into().unwrap()];
 
                     for i in 0..res.p2 {
-                        res.extra.insert(i.try_into().unwrap(), INDEX(decoder)?);
+                        res.extra
+                            .insert(i.try_into().unwrap(), UINDEX(decoder)?.try_into().unwrap());
                     }
                     res.p3 = UINDEX(decoder)?.try_into().unwrap();
                 }
@@ -481,14 +480,14 @@ impl Code {
 
         Ok(res)
     }
-    
+
     pub fn debu_infos(decoder: &mut Decoder, nops: usize) -> Result<Vec<i32>, DecodeError> {
         let mut curfile: i8 = -1;
         let mut curline: usize = 0;
 
         let mut debug: Vec<i32> = vec![0; 4 * nops * 2];
 
-        let mut i:usize = 0;
+        let mut i: usize = 0;
 
         loop {
             if (i as usize) < nops {
@@ -507,13 +506,13 @@ impl Code {
                     }
                     // count -= 1;
                     loop {
-                        
-                        if count >= 0 {break;}
+                        if count >= 0 {
+                            break;
+                        }
                         debug[(i << 1) as usize] = curfile as i32;
                         debug[((i << 1) | 1) as usize] = curline as i32;
                         i += 1;
                         count -= 1;
-                        
                     }
                     curline += delta as usize;
                 } else if (c & 4) != 0 {
@@ -523,10 +522,10 @@ impl Code {
                     i += 1;
                 } else {
                     let b2 = u8::decode(decoder)?;
-                    let b3:u32 = u8::decode(decoder)?.into();
+                    let b3: u32 = u8::decode(decoder)?.into();
                     curline = ((c >> 3) as u32 | (b2 << 5) as u32 | (b3 << 13)) as usize;
                     debug[(i << 1) as usize] = curfile as i32;
-                    debug[((i << 1) | 1) as usize]  = curline as i32;
+                    debug[((i << 1) | 1) as usize] = curline as i32;
                     i += 1;
                 }
             } else {
@@ -616,9 +615,6 @@ impl Code {
             c = decoder.code.clone();
         }
 
-        // println!("{:?}", c.strings);
-        // println!("{:?}", decoder.buf.len());
-
         c.types = vec![ValueType::default(); c.ntypes];
 
         for i in 0..c.ntypes {
@@ -638,29 +634,27 @@ impl Code {
         }
 
         c.natives = Vec::new();
-        for i in 0..c.nnatives {
-            decoder.code = c.clone();
+        for _i in 0..c.nnatives {
             c.natives.push(Native {
                 lib: Code::read_string(&mut decoder)?,
                 name: Code::read_string(&mut decoder)?,
                 t: Code::get_type(&mut decoder)?,
                 findex: UINDEX(&mut decoder)?,
             });
-
-            c = decoder.code.clone();
+            decoder.code = c.clone();
         }
 
         for i in 0..c.nfunctions {
             decoder.code = c.clone();
             let f = Code::read_function(&mut decoder)?;
             decoder.code.functions.push(f);
-            if decoder.code.hasdebug == 1 {
+            if decoder.code.hasdebug != 0 {
                 let nops = decoder.code.functions[i].nops;
                 decoder.code.functions[i].debug = Code::debu_infos(&mut decoder, nops)?;
                 if decoder.code.version >= 3 {
                     // skip assigns (no need here)
                     let nassigns = UINDEX(&mut decoder)?;
-                    for j in 0..nassigns {
+                    for _j in 0..nassigns {
                         UINDEX(&mut decoder)?;
                         INDEX(&mut decoder)?;
                     }
@@ -715,7 +709,7 @@ mod tests {
             .expect("Could not read hashlink binary");
 
         let code = Code::read(&buf);
-        
+
         assert!(code.is_ok(), "Code is not okay!")
     }
 }
