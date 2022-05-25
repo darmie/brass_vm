@@ -10,6 +10,8 @@ pub enum DecodeErrorKind {
     CouldNotReadIndex,
     CouldNotReadStringAtIndex,
     InvalidStringIndex,
+    InvalidString,
+    NegativeIndex,
 }
 
 #[derive(Debug, Clone, PartialEq)]

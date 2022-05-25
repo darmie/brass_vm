@@ -21,8 +21,9 @@ use crate::op::Opcode;
 // limitations under the License.
 
 #[derive(Clone, Copy)]
+#[derive(Debug)]
 #[derive(IntoPrimitive, TryFromPrimitive)]
-#[repr(u32)]
+#[repr(u8)]
 pub enum TypeKind {
     HVOID = 0,
     HUI8 = 1,
@@ -49,9 +50,9 @@ pub enum TypeKind {
     HPACKED = 22,
     // ---------
     HLAST = 23,
-    HForceInt = 0x7FFFFFFF,
+    // HForceInt = 0x7FFFFFFF,
 }
-
+#[derive(Debug)]
 #[derive(Clone)]
 pub enum ValueTypeU {
     FuncType(FuncType),
@@ -65,20 +66,22 @@ pub enum ValueTypeU {
 }
 
 #[derive(Clone)]
+#[derive(Debug)]
 pub struct ValueType {
     pub union: ValueTypeU,
     pub abs_name: Option<String>,
-    pub tparam: Box<ValueType>,
+    pub tparam: Option<Box<ValueType>>,
     pub kind:TypeKind,
 }
 
 impl ValueType {
     pub fn default() -> Self {
-        return ValueType { union: ValueTypeU::Null(()), abs_name: None, tparam: Box::new(ValueType::default()), kind: TypeKind::HNULL }
+        return ValueType { union: ValueTypeU::Null(()), abs_name: None, tparam: None, kind: TypeKind::HNULL }
     }
 }
 
 #[derive(Clone)]
+#[derive(Debug)]
 pub struct FuncType {
     pub args: Vec<ValueType>,
     pub nargs: usize,
@@ -88,6 +91,7 @@ pub struct FuncType {
 
 
 #[derive(Clone)]
+#[derive(Debug)]
 pub struct ObjType {
     pub name: String,
     pub super_type: Box<ValueType>,
@@ -97,17 +101,19 @@ pub struct ObjType {
     pub nbindings:usize,
     pub proto: Vec<ObjProto>,
     pub bindings: Vec<u32>,
-    pub global_value: *const dyn Any,
+    pub global_value: Vec<*mut dyn Any>,
     pub rt:Option<RuntimeObj>
 }
 
 #[derive(Clone)]
+#[derive(Debug)]
 pub struct ObjField {
     pub name:String,
     pub hashed_name:i32,
     pub t:ValueType
 }
 #[derive(Clone)]
+#[derive(Debug)]
 pub struct ObjProto {
     pub name:String,
     pub hashed_name:i32,
@@ -116,20 +122,23 @@ pub struct ObjProto {
 }
 
 #[derive(Clone)]
+#[derive(Debug)]
 pub struct VirtualType {
     pub nfields:usize,
     pub fields:Vec<ObjField>,
 }
 
 #[derive(Clone)]
+#[derive(Debug)]
 pub struct EnumType {
     pub name:String,
     pub nconstructs:usize,
     pub constructs:Vec<EnumConstruct>,
-    pub global_value: *const dyn Any
+    pub global_value: Vec<*mut dyn Any>
 }
 
 #[derive(Clone)]
+#[derive(Debug)]
 pub struct EnumConstruct {
     pub name:String,
     pub nparams:usize,
@@ -141,9 +150,11 @@ pub struct EnumConstruct {
 
 
 #[derive(Clone)]
+#[derive(Debug)]
 pub struct RuntimeObj {}
 
 #[derive(Clone)]
+#[derive(Debug)]
 pub struct HLFunction {
     pub t:ValueType,
     pub findex:usize,
@@ -155,6 +166,7 @@ pub struct HLFunction {
 }
 
 #[derive(Clone)]
+#[derive(Debug)]
 pub struct Constant {
     pub global:u32,
     pub nfields:usize,

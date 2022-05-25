@@ -1,0 +1,4 @@
+-cp ./src
+--dce no
+-m Main
+--hl bin/test.hl

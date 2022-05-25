@@ -1,10 +1,13 @@
-use crate::{errors::{DecodeErrorKind, DecodeError}, code::Code};
+use crate::{
+    code::Code,
+    errors::{DecodeError, DecodeErrorKind},
+};
 
 #[derive(Clone)]
 pub struct Decoder<'input> {
-    buf: &'input [u8],
+    pub buf: &'input [u8],
     pub file_position: usize,
-    pub code:Code
+    pub code: Code,
 }
 
 impl<'input> Decoder<'input> {
@@ -12,7 +15,7 @@ impl<'input> Decoder<'input> {
         Decoder {
             buf,
             file_position: 0,
-            code: Code::new()
+            code: Code::new(),
         }
     }
 
@@ -50,6 +53,26 @@ impl<'input> Decoder<'input> {
         }
     }
 
+    pub fn read_index(&mut self, buf: &mut [u8]) -> Result<i32, DecodeError> {
+        let b = u8::decode(self)?;
+        if (b & 0x80) == 0 {
+            return Ok((b & 0x7F).into());
+        }
+        if (b & 0x40) == 0 {
+            let bf = b & 31;
+            let v: u32 = (u8::decode(self)? | b).into();
+            return Ok(v.try_into().unwrap());
+        }
+        {
+            let c = u8::decode(self)?;
+            let d = u8::decode(self)?;
+            let e = u8::decode(self)?;
+            let bf = b & 31;
+            let v: u32 = u32::from_le_bytes([b, c, d, e]);
+            Ok(v.try_into().unwrap())
+        }
+    }
+
     pub fn read_bytes_vec(&mut self, buf: &mut Vec<u8>) -> Result<(), DecodeError> {
         if buf.len() > self.buf.len() {
             Err(DecodeError::with_info(
@@ -74,30 +97,89 @@ pub trait Decode<'input>: Sized + 'input {
     fn decode(decoder: &mut Decoder<'input>) -> Result<Self, DecodeError>;
 }
 
-macro_rules! impl_decode {
-    ($($t:ty => $len:expr,)*) => {
-        $(
-            impl<'input> Decode<'input> for $t {
-                fn decode(decoder: &mut Decoder<'input>) -> Result<Self, DecodeError> {
-                    let mut buf = <[u8; $len]>::default();
-                    decoder.read_bytes(&mut buf)?;
-                    Ok(Self::from_le_bytes(buf))
-                }
-            }
-        )*
-    }
-}
+// macro_rules! impl_decode {
+//     ($($t:ty => $len:expr,)*) => {
+//         $(
+//             impl<'input> Decode<'input> for $t {
+//                 fn decode(decoder: &mut Decoder<'input>) -> Result<Self, DecodeError> {
+//                     let mut buf = <[u8; $len]>::default();
+//                     decoder.read_bytes(&mut buf)?;
+//                     Ok(Self::from_le_bytes(buf))
+//                 }
+//             }
+//         )*
+//     }
+// }
 
-impl_decode! {
-    u8 => 1, i8 => 1,
-    u16 => 2, i16 => 2,
-    u32 => 4, i32 => 4,
-    u64 => 8, i64 => 8,
-}
+// impl_decode! {
+//     // u8 => 1,
+//     i8 => 1,
+//     u16 => 2,
+//     i16 => 2,
+//     u32 => 4,
+//     i32 => 4,
+//     u64 => 8,
+//     i64 => 8,
+// }
 
 impl<'input> Decode<'input> for f64 {
     fn decode(decoder: &mut Decoder<'input>) -> Result<f64, DecodeError> {
         let bits = decoder.read()?;
         Ok(f64::from_bits(bits))
+    }
+}
+
+impl<'input> Decode<'input> for u8 {
+    fn decode(decoder: &mut Decoder<'input>) -> Result<u8, DecodeError> {
+        let mut buf = <[u8; 1]>::default();
+        decoder.read_bytes(&mut buf)?;
+        Ok(Self::from_le_bytes(buf))
+    }
+}
+
+impl<'input> Decode<'input> for i8 {
+    fn decode(decoder: &mut Decoder<'input>) -> Result<i8, DecodeError> {
+        let mut buf = <[u8; 1]>::default();
+        decoder.read_bytes(&mut buf)?;
+        Ok(Self::from_le_bytes(buf))
+    }
+}
+
+impl<'input> Decode<'input> for i32 {
+    fn decode(decoder: &mut Decoder<'input>) -> Result<i32, DecodeError> {
+        let mut buf = <[u8; 4]>::default();
+        let d = decoder.read_bytes(&mut buf);
+        if d.is_err() {
+           return Ok(0);
+        }
+        if decoder.file_position + 4 > decoder.buf.len() {
+            // no more data
+            return Ok(0);
+        }
+        Ok(Self::from_le_bytes(buf))
+    }
+}
+
+// impl<'input> Decode<'input> for u32 {
+//     fn decode(decoder: &mut Decoder<'input>) -> Result<u32, DecodeError> {
+//         let mut buf = <[u8; 4]>::default();
+//         decoder.read_bytes(&mut buf)?;
+//         Ok(Self::from_le_bytes(buf))
+//     }
+// }
+
+impl<'input> Decode<'input> for u64 {
+    fn decode(decoder: &mut Decoder<'input>) -> Result<u64, DecodeError> {
+        let mut buf = <[u8; 8]>::default();
+        decoder.read_bytes(&mut buf)?;
+        Ok(Self::from_le_bytes(buf))
+    }
+}
+
+impl<'input> Decode<'input> for i64 {
+    fn decode(decoder: &mut Decoder<'input>) -> Result<i64, DecodeError> {
+        let mut buf = <[u8; 8]>::default();
+        decoder.read_bytes(&mut buf)?;
+        Ok(Self::from_le_bytes(buf))
     }
 }

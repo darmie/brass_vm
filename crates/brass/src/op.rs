@@ -19,9 +19,10 @@ use strum_macros::IntoStaticStr;
 // limitations under the License.
 
 #[derive(Clone)]
+#[derive(Debug)]
 #[derive(IntoPrimitive, TryFromPrimitive, IntoStaticStr)]
 #[derive(PartialEq)]
-#[repr(i8)]
+#[repr(u8)]
 pub enum Op {
     OMov = 0,
     OInt = 1,
@@ -148,6 +149,7 @@ pub static OP_NARGS: [i8; 100] = [
 
 
 #[derive(Clone)]
+#[derive(Debug)]
 pub struct Opcode {
     pub op:Op,
     pub p1:i32,
@@ -158,6 +160,6 @@ pub struct Opcode {
 
 impl Opcode {
     pub fn default() -> Self {
-        return Opcode { op: Op::ONop, p1: -1, p2: -1, p3: -1, extra: Vec::new() }
+        Opcode { op: Op::ONop, p1: -1, p2: -1, p3: -1, extra: Vec::new() }
     }
 }

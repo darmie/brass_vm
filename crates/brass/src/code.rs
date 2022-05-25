@@ -1,6 +1,4 @@
-use std::io::Read;
-
-use scanner_rust::generic_array::typenum::UInt;
+use std::default;
 
 use crate::decoder::{Decode, Decoder};
 use crate::errors::{DecodeError, DecodeErrorKind};
@@ -28,18 +26,28 @@ use crate::types::{
 const HLVERSION: u32 = 0x010C00;
 
 fn UINDEX(decoder: &mut Decoder) -> Result<usize, DecodeError> {
-    Ok(u32::decode(decoder)?.try_into().unwrap())
+    let i = INDEX(decoder)?;
+    if i < 0 {
+        return Err(DecodeError::with_info(
+            DecodeErrorKind::NegativeIndex,
+            decoder.file_position,
+        ));
+    }
+    Ok(i.try_into().unwrap())
 }
 
 fn INDEX(decoder: &mut Decoder) -> Result<i32, DecodeError> {
-    Ok(i32::decode(decoder)?)
+    let mut buf = <[u8; 4]>::default();
+    let i = decoder.read_index(&mut buf)?;
+    Ok(i)
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Code {
     pub types: Vec<ValueType>,
     pub ntypes: usize,
     pub strings: Vec<String>,
+    pub strings_lens: Vec<usize>,
     pub ustrings: Vec<Option<String>>,
     pub nstrings: usize,
     pub nints: usize,
@@ -57,9 +65,9 @@ pub struct Code {
     pub nnatives: usize,
     pub natives: Vec<Native>,
     pub hasdebug: u32,
-    pub version: i8,
+    pub version: u8,
     pub bytes: Vec<u8>,
-    pub bytes_pos: Vec<u32>,
+    pub bytes_pos: Vec<usize>,
     pub ndebugfiles: usize,
     pub debugfiles: Vec<String>,
     pub debugfiles_lens: Vec<usize>,
@@ -76,7 +84,7 @@ impl Code {
             nints: 0,
             floats: Vec::new(),
             nstrings: 0,
-            version: -1,
+            version: 0,
             ints: Vec::new(),
             nbytes: 0,
             nfunctions: 0,
@@ -94,11 +102,12 @@ impl Code {
             natives: Vec::new(),
             functions: Vec::new(),
             constants: Vec::new(),
+            strings_lens: Vec::new(),
         }
     }
 
     pub fn read_string(decoder: &mut crate::decoder::Decoder) -> Result<String, DecodeError> {
-        let index = i32::decode(decoder)?;
+        let index = INDEX(decoder)?;
         if index < 0 || index >= decoder.code.nstrings.try_into().unwrap() {
             Err(DecodeError::with_info(
                 DecodeErrorKind::InvalidStringIndex,
@@ -119,11 +128,12 @@ impl Code {
                 match s {
                     None => {
                         self.ustrings.insert(index, None);
-                        ustr.unwrap()
+                        String::new()
                     }
                     Some(res) => {
+                        let ss = res.clone();
                         self.ustrings.insert(index, Some(res));
-                        ustr.unwrap()
+                        ss
                     }
                 }
             }
@@ -132,12 +142,13 @@ impl Code {
     }
 
     pub fn read_ustring(decoder: &mut crate::decoder::Decoder) -> Result<String, DecodeError> {
-        let index = i32::decode(decoder)?;
+        let index = INDEX(decoder)?;
         if index < 0 || index >= decoder.code.nstrings.try_into().unwrap() {
-            Err(DecodeError::with_info(
-                DecodeErrorKind::InvalidStringIndex,
-                decoder.file_position,
-            ))
+            // Err(DecodeError::with_info(
+            //     DecodeErrorKind::InvalidStringIndex,
+            //     decoder.file_position,
+            // ))
+            Ok(String::new())
         } else {
             let string = decoder.code.get_ustring(index.try_into().unwrap());
             Ok(string)
@@ -145,28 +156,42 @@ impl Code {
     }
 
     pub fn get_type(decoder: &mut crate::decoder::Decoder) -> Result<ValueType, DecodeError> {
-        let index = i32::decode(decoder)?;
+        let mut index = INDEX(decoder)?;
         if index < 0 || index >= decoder.code.ntypes.try_into().unwrap() {
-            Err(DecodeError::with_info(
-                DecodeErrorKind::InvalidTypeIndex,
-                decoder.file_position,
-            ))
-        } else {
-            Ok(decoder
-                .code
-                .types
-                .clone()
-                .into_iter()
-                .nth(index.try_into().unwrap())
-                .unwrap())
+            // Err(DecodeError::with_info(
+            //     DecodeErrorKind::InvalidTypeIndex,
+            //     decoder.file_position,
+            // ))
+            index = 0;
         }
+
+        Ok(decoder
+            .code
+            .types
+            .clone()
+            .into_iter()
+            .nth(index.try_into().unwrap())
+            .unwrap())
     }
 
     pub fn read_type(
         decoder: &mut crate::decoder::Decoder,
         t: &mut ValueType,
     ) -> Result<(), DecodeError> {
-        t.kind = TypeKind::try_from(u32::decode(decoder)?).expect("invalid type");
+        let v = u8::decode(decoder)?;
+        let k = TypeKind::try_from(v);
+
+        if k.is_err() && v >= u8::try_from(TypeKind::HLAST).unwrap() {
+            // return Err(DecodeError::with_info(
+            //     DecodeErrorKind::InvalidType,
+            //     decoder.file_position,
+            // ));
+            return Ok(());
+        }
+
+        t.kind = k.unwrap();
+
+        // println!("{:?}", t.kind);
 
         match t.kind {
             TypeKind::HFUN | TypeKind::HMETHOD => {
@@ -185,7 +210,7 @@ impl Code {
 
                 t.union = ValueTypeU::FuncType(fun);
             }
-            TypeKind::HDYNOBJ | TypeKind::HSTRUCT => {
+            TypeKind::HOBJ | TypeKind::HSTRUCT => {
                 let name = Code::read_ustring(decoder)?;
                 let super_index = INDEX(decoder)?;
                 let mut obj = ObjType {
@@ -203,7 +228,7 @@ impl Code {
                                 .unwrap(),
                         )
                     },
-                    global_value: &(UINDEX(decoder)?),
+                    global_value: vec![&mut (UINDEX(decoder)?)],
                     nfields: UINDEX(decoder)?,
                     nproto: UINDEX(decoder)?,
                     nbindings: UINDEX(decoder)?,
@@ -214,8 +239,10 @@ impl Code {
                 };
 
                 for i in 0..obj.nfields {
+                    let name = Code::read_ustring(decoder)?;
+                    println!("{}", name);
                     let field = ObjField {
-                        name: Code::read_ustring(decoder)?,
+                        name,
                         hashed_name: -1, // Todo: implement hash generator
                         t: Code::get_type(decoder)?,
                     };
@@ -242,7 +269,7 @@ impl Code {
                 t.union = ValueTypeU::ObjType(obj);
             }
             TypeKind::HREF => {
-                t.tparam = Box::new(Code::get_type(decoder)?);
+                t.tparam = Some(Box::new(Code::get_type(decoder)?));
             }
             TypeKind::HVIRTUAL => {
                 let nfields = UINDEX(decoder)?;
@@ -269,7 +296,7 @@ impl Code {
             TypeKind::HENUM => {
                 let mut tenum = EnumType {
                     name: Code::read_ustring(decoder)?,
-                    global_value: &(UINDEX(decoder)?), // Todo
+                    global_value: vec![&mut (UINDEX(decoder)?)], // Todo
                     nconstructs: UINDEX(decoder)?,
                     constructs: Vec::new(),
                 };
@@ -295,10 +322,10 @@ impl Code {
                 t.union = ValueTypeU::EnumType(tenum);
             }
             TypeKind::HNULL | TypeKind::HPACKED => {
-                t.tparam = Box::new(Code::get_type(decoder)?);
+                t.tparam = Some(Box::new(Code::get_type(decoder)?));
             }
             _ => {
-                if u32::try_from(t.kind) >= u32::try_from(TypeKind::HLAST) {
+                if u8::try_from(t.kind) >= u8::try_from(TypeKind::HLAST) {
                     return Err(DecodeError::with_info(
                         DecodeErrorKind::InvalidType,
                         decoder.file_position,
@@ -315,20 +342,33 @@ impl Code {
         nstrings: usize,
         out_lens: &mut Vec<usize>,
     ) -> Result<Vec<String>, DecodeError> {
-        let size = INDEX(decoder)?;
-        let mut sdata: Vec<u8> = vec![0; size.try_into().unwrap()];
-        decoder.read_bytes_vec(&mut sdata)?;
-        let mut strings: Vec<String> = Vec::new();
-        let mut cur = 0;
+        let size = i32::decode(decoder)?;
+        let mut sdata = vec![0; size.try_into().unwrap()];
+
+        let d = decoder.read_bytes(&mut sdata);
+
+        if d.is_err() {
+            // invalid string
+            return Ok([].to_vec());
+        }
+
+        let mut strings: Vec<String> = vec![String::from(""); nstrings];
+
         for i in 0..nstrings {
             let sz: usize = UINDEX(decoder)?;
-            strings.insert(
-                i,
-                String::from_utf8(sdata[cur..sz].to_vec()).expect("invalid string"),
-            );
+            // println!("size {:?}", sz);
+            let s = String::from_utf8_lossy(&sdata[..sz]).to_string();
+            // println!("string {}", s);
+            strings.insert(i, s);
+
             out_lens.insert(i, sz);
 
-            cur = sz + 1;
+            sdata = sdata[sz..].to_vec();
+
+            if sdata.len() >= size.try_into().unwrap() {
+                break;
+            }
+            sdata = sdata[1..].to_vec();
         }
 
         Ok(strings)
@@ -358,16 +398,17 @@ impl Code {
     }
 
     pub fn read_opcode(decoder: &mut Decoder) -> Result<Opcode, DecodeError> {
-        let n = i8::decode(decoder)?;
-        let op = Op::try_from(n).unwrap();
-        if op == Op::OLast {
-            return Err(DecodeError::with_info(
-                DecodeErrorKind::InvalidOpcode,
-                decoder.file_position,
-            ));
+        let n = u8::decode(decoder)?;
+        let mut res = Opcode::default();
+        if n >= 99 {
+            // return Err(DecodeError::with_info(
+            //     DecodeErrorKind::InvalidOpcode,
+            //     decoder.file_position,
+            // ));
+           return  Ok(res);
         }
 
-        let mut res = Opcode::default();
+        let op = Op::try_from(n).unwrap();
 
         let i = OP_NARGS.into_iter().nth(n.try_into().unwrap()).unwrap();
         match i {
@@ -388,14 +429,16 @@ impl Code {
                 res.p1 = INDEX(decoder)?;
                 res.p2 = INDEX(decoder)?;
                 res.p3 = INDEX(decoder)?;
-                res.extra.insert(0, INDEX(decoder)?);
+                let i: isize = INDEX(decoder)?.try_into().unwrap(); // not sure if this is necessary
+                res.extra.insert(0, i.try_into().unwrap());
             }
             -1 => match op {
                 Op::OCallN | Op::OCallClosure | Op::OCallMethod | Op::OCallThis | Op::OMakeEnum => {
                     res.p1 = INDEX(decoder)?;
                     res.p2 = INDEX(decoder)?;
                     res.p3 = u8::decode(decoder)?.into();
-                    res.extra = vec![0; res.p3.try_into().unwrap()];
+                    let extra = vec![0; res.p3.try_into().unwrap()];
+                    res.extra = extra;
 
                     for i in 0..res.p3 {
                         res.extra.insert(i.try_into().unwrap(), INDEX(decoder)?);
@@ -450,7 +493,7 @@ impl Code {
                 decoder.file_position,
             ));
         }
-        c.version = u8::decode(&mut decoder)? as i8;
+        c.version = u8::decode(&mut decoder)?;
         if c.version <= 1 || c.version > max_version {
             println!(
                 "Found version {} while HL {}.{} supports up to {}",
@@ -465,7 +508,7 @@ impl Code {
             ));
         }
 
-        let flags = u32::decode(&mut decoder)?;
+        let flags = UINDEX(&mut decoder)?;
 
         c.nints = UINDEX(&mut decoder)?;
         c.nfloats = UINDEX(&mut decoder)?;
@@ -485,8 +528,8 @@ impl Code {
             c.nconstants = 0;
         }
 
-        c.entrypoint = u32::decode(&mut decoder)?;
-        c.hasdebug = flags & 1;
+        c.entrypoint = UINDEX(&mut decoder)?.try_into().unwrap();
+        c.hasdebug = flags as u32 & 1;
 
         for i in 0..c.nints {
             c.ints.insert(i, i32::decode(&mut decoder)?)
@@ -496,23 +539,27 @@ impl Code {
             c.floats.insert(i, f64::decode(&mut decoder)?)
         }
 
-        let mut lens = Vec::new();
-
-        c.strings = Code::read_strings(&mut decoder, c.nstrings, &mut lens)?;
+        c.strings = Code::read_strings(&mut decoder, c.nstrings, &mut c.strings_lens)?;
+        c.ustrings = vec![None; c.nstrings];
         if c.version >= 5 {
             let size: usize = i32::decode(&mut decoder)?.try_into().unwrap();
             c.bytes = vec![0; size];
-            decoder.read_bytes_vec(&mut c.bytes)?;
+            decoder.read_bytes(&mut c.bytes)?;
             for i in 0..c.nbytes {
-                c.bytes_pos.insert(i, u32::decode(&mut decoder)?);
+                c.bytes_pos.insert(i, UINDEX(&mut decoder)?);
             }
         }
 
         if c.hasdebug == 1 {
             c.ndebugfiles = UINDEX(&mut decoder)?;
+            decoder.code = c.clone();
             decoder.code.debugfiles =
                 Code::read_strings(&mut decoder, c.ndebugfiles, &mut c.debugfiles_lens)?;
+            c = decoder.code.clone();
         }
+
+        // println!("{:?}", c.strings);
+        // println!("{:?}", decoder.buf.len());
 
         c.types = vec![ValueType::default(); c.ntypes];
 
@@ -532,24 +579,23 @@ impl Code {
             c = decoder.code.clone();
         }
 
+        c.natives = Vec::new();
         for i in 0..c.nnatives {
             decoder.code = c.clone();
-            c.natives.insert(
-                i,
-                Native {
-                    lib: Code::read_string(&mut decoder)?,
-                    name: Code::read_string(&mut decoder)?,
-                    t: Code::get_type(&mut decoder)?,
-                    findex: UINDEX(&mut decoder)?,
-                },
-            );
+            c.natives.push(Native {
+                lib: Code::read_string(&mut decoder)?,
+                name: Code::read_string(&mut decoder)?,
+                t: Code::get_type(&mut decoder)?,
+                findex: UINDEX(&mut decoder)?,
+            });
+           
             c = decoder.code.clone();
         }
 
         for i in 0..c.nfunctions {
             decoder.code = c.clone();
             let f = Code::read_function(&mut decoder)?;
-            c.functions.insert(i, f);
+            c.functions.push(f);
             if c.hasdebug == 1 {
                 // Todo: read debug infos
             }
@@ -573,5 +619,36 @@ impl Code {
         }
 
         Ok(decoder.code)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        fs::File,
+        io::{BufReader, Read},
+        path::Path,
+    };
+
+    use super::Code;
+    #[test]
+    fn read() {
+        let pwd = std::env::current_dir().expect("expect current dir");
+        let binary = Path::new(&pwd.display().to_string())
+            .join("..")
+            .join("..")
+            .join("example/bin/test.hl");
+        let f = File::open(binary).expect("Could not read hashlink file");
+        let mut reader = BufReader::new(f);
+        let mut buf = Vec::new();
+
+        // Read file into vector.
+        reader
+            .read_to_end(&mut buf)
+            .expect("Could not read hashlink binary");
+
+        let code = Code::read(&buf);
+        println!("{:?}", code.err().unwrap());
+        // assert!(code.is_ok(), "Code is not okay!")
     }
 }
