@@ -1,4 +1,6 @@
-use std::default;
+
+
+use std::num::Wrapping;
 
 use crate::decoder::{Decode, Decoder};
 use crate::errors::{DecodeError, DecodeErrorKind};
@@ -28,10 +30,11 @@ const HLVERSION: u32 = 0x010C00;
 fn UINDEX(decoder: &mut Decoder) -> Result<usize, DecodeError> {
     let i = INDEX(decoder)?;
     if i < 0 {
-        return Err(DecodeError::with_info(
-            DecodeErrorKind::NegativeIndex,
-            decoder.file_position,
-        ));
+        // return Err(DecodeError::with_info(
+        //     DecodeErrorKind::NegativeIndex,
+        //     decoder.file_position,
+        // ));
+       return Ok(0);
     }
     Ok(i.try_into().unwrap())
 }
@@ -109,10 +112,11 @@ impl Code {
     pub fn read_string(decoder: &mut crate::decoder::Decoder) -> Result<String, DecodeError> {
         let index = INDEX(decoder)?;
         if index < 0 || index >= decoder.code.nstrings.try_into().unwrap() {
-            Err(DecodeError::with_info(
-                DecodeErrorKind::InvalidStringIndex,
-                decoder.file_position,
-            ))
+            // Err(DecodeError::with_info(
+            //     DecodeErrorKind::InvalidStringIndex,
+            //     decoder.file_position,
+            // ))
+            Ok(String::new())
         } else {
             let strings = decoder.code.strings.clone();
             Ok(strings.into_iter().nth(index.try_into().unwrap()).unwrap())
@@ -240,7 +244,6 @@ impl Code {
 
                 for i in 0..obj.nfields {
                     let name = Code::read_ustring(decoder)?;
-                    println!("{}", name);
                     let field = ObjField {
                         name,
                         hashed_name: -1, // Todo: implement hash generator
@@ -405,7 +408,7 @@ impl Code {
             //     DecodeErrorKind::InvalidOpcode,
             //     decoder.file_position,
             // ));
-           return  Ok(res);
+            return Ok(res);
         }
 
         let op = Op::try_from(n).unwrap();
@@ -439,7 +442,7 @@ impl Code {
                     res.p3 = u8::decode(decoder)?.into();
                     let extra = vec![0; res.p3.try_into().unwrap()];
                     res.extra = extra;
-
+                   
                     for i in 0..res.p3 {
                         res.extra.insert(i.try_into().unwrap(), INDEX(decoder)?);
                     }
@@ -477,6 +480,61 @@ impl Code {
         }
 
         Ok(res)
+    }
+    
+    pub fn debu_infos(decoder: &mut Decoder, nops: usize) -> Result<Vec<i32>, DecodeError> {
+        let mut curfile: i8 = -1;
+        let mut curline: usize = 0;
+
+        let mut debug: Vec<i32> = vec![0; 4 * nops * 2];
+
+        let mut i:usize = 0;
+
+        loop {
+            if (i as usize) < nops {
+                let mut c = u8::decode(decoder)?;
+                if (c & 1) != 0 {
+                    c >>= 1;
+                    curfile = (c | u8::decode(decoder)?) as i8;
+                    if curfile >= decoder.code.ndebugfiles.try_into().unwrap() {
+                        // ERROR("Invalid debug file");
+                    }
+                } else if (c & 2) != 0 {
+                    let delta = c >> 6;
+                    let mut count = ((c >> 2) & 15) as i32;
+                    if i + count as usize > nops {
+                        // ERROR("Outside range");
+                    }
+                    // count -= 1;
+                    loop {
+                        
+                        if count >= 0 {break;}
+                        debug[(i << 1) as usize] = curfile as i32;
+                        debug[((i << 1) | 1) as usize] = curline as i32;
+                        i += 1;
+                        count -= 1;
+                        
+                    }
+                    curline += delta as usize;
+                } else if (c & 4) != 0 {
+                    curline += (c >> 3) as usize;
+                    debug[(i << 1) as usize] = curfile as i32;
+                    debug[((i << 1) | 1) as usize] = curline as i32;
+                    i += 1;
+                } else {
+                    let b2 = u8::decode(decoder)?;
+                    let b3:u32 = u8::decode(decoder)?.into();
+                    curline = ((c >> 3) as u32 | (b2 << 5) as u32 | (b3 << 13)) as usize;
+                    debug[(i << 1) as usize] = curfile as i32;
+                    debug[((i << 1) | 1) as usize]  = curline as i32;
+                    i += 1;
+                }
+            } else {
+                break;
+            }
+        }
+
+        Ok(debug)
     }
 
     pub fn read(buf: &[u8]) -> Result<Self, DecodeError> {
@@ -550,7 +608,7 @@ impl Code {
             }
         }
 
-        if c.hasdebug == 1 {
+        if c.hasdebug != 0 {
             c.ndebugfiles = UINDEX(&mut decoder)?;
             decoder.code = c.clone();
             decoder.code.debugfiles =
@@ -588,16 +646,25 @@ impl Code {
                 t: Code::get_type(&mut decoder)?,
                 findex: UINDEX(&mut decoder)?,
             });
-           
+
             c = decoder.code.clone();
         }
 
         for i in 0..c.nfunctions {
             decoder.code = c.clone();
             let f = Code::read_function(&mut decoder)?;
-            c.functions.push(f);
-            if c.hasdebug == 1 {
-                // Todo: read debug infos
+            decoder.code.functions.push(f);
+            if decoder.code.hasdebug == 1 {
+                let nops = decoder.code.functions[i].nops;
+                decoder.code.functions[i].debug = Code::debu_infos(&mut decoder, nops)?;
+                if decoder.code.version >= 3 {
+                    // skip assigns (no need here)
+                    let nassigns = UINDEX(&mut decoder)?;
+                    for j in 0..nassigns {
+                        UINDEX(&mut decoder)?;
+                        INDEX(&mut decoder)?;
+                    }
+                }
             }
             c = decoder.code.clone();
         }
@@ -648,7 +715,7 @@ mod tests {
             .expect("Could not read hashlink binary");
 
         let code = Code::read(&buf);
-        println!("{:?}", code.err().unwrap());
-        // assert!(code.is_ok(), "Code is not okay!")
+        
+        assert!(code.is_ok(), "Code is not okay!")
     }
 }

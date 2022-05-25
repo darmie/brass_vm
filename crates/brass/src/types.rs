@@ -162,7 +162,7 @@ pub struct HLFunction {
     pub nops:usize,
     pub regs:Vec<ValueType>,
     pub ops:Vec<Opcode>,
-    pub debug:Vec<String>
+    pub debug:Vec<i32>
 }
 
 #[derive(Clone)]

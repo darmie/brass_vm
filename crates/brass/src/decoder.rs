@@ -59,17 +59,19 @@ impl<'input> Decoder<'input> {
             return Ok((b & 0x7F).into());
         }
         if (b & 0x40) == 0 {
-            let bf = b & 31;
-            let v: u32 = (u8::decode(self)? | b).into();
+            let v: u32 = (u8::decode(self)? | (b & 31)).into();
             return Ok(v.try_into().unwrap());
         }
         {
             let c = u8::decode(self)?;
             let d = u8::decode(self)?;
             let e = u8::decode(self)?;
-            let bf = b & 31;
-            let v: u32 = u32::from_le_bytes([b, c, d, e]);
-            Ok(v.try_into().unwrap())
+
+            // let v =  ((b & 31) << 24)  | (c << 16) | (d << 8) | e;
+            let v = vec![b, c, d, e];
+            let mut u = <[u8; 4]>::default();
+            u.copy_from_slice(&v[..]);
+            Ok(i32::from_be_bytes(u))
         }
     }
 
@@ -150,7 +152,7 @@ impl<'input> Decode<'input> for i32 {
         let mut buf = <[u8; 4]>::default();
         let d = decoder.read_bytes(&mut buf);
         if d.is_err() {
-           return Ok(0);
+            return Ok(0);
         }
         if decoder.file_position + 4 > decoder.buf.len() {
             // no more data
