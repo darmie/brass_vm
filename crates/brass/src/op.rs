@@ -1,9 +1,3 @@
-use num_enum::{IntoPrimitive, TryFromPrimitive};
-
-extern crate strum;
-
-use strum_macros::IntoStaticStr;
-
 // Copyright 2022 Zenturi Software Co.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,10 +12,10 @@ use strum_macros::IntoStaticStr;
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[derive(Clone)]
-#[derive(Debug)]
-#[derive(IntoPrimitive, TryFromPrimitive, IntoStaticStr)]
-#[derive(PartialEq)]
+use num_enum::{IntoPrimitive, TryFromPrimitive};
+use strum_macros::IntoStaticStr;
+
+#[derive(Clone, Debug, PartialEq, Eq, TryFromPrimitive, IntoStaticStr)]
 #[repr(u8)]
 pub enum Op {
     OMov = 0,
@@ -147,19 +141,23 @@ pub static OP_NARGS: [i8; 100] = [
     4, 3, 0, 2, 3, 0, 0,
 ];
 
-
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Opcode {
-    pub op:Op,
-    pub p1:i32,
-    pub p2:i32,
-    pub p3:i32,
-    pub extra: Vec<i32>
+    pub op: Op,
+    pub p1: Option<i32>,
+    pub p2: Option<i32>,
+    pub p3: Option<i32>,
+    pub extra: Vec<i32>,
 }
 
 impl Opcode {
     pub fn default() -> Self {
-        Opcode { op: Op::ONop, p1: -1, p2: -1, p3: -1, extra: Vec::new() }
+        Opcode {
+            op: Op::ONop,
+            p1: None,
+            p2: None,
+            p3: None,
+            extra: Vec::new(),
+        }
     }
 }

@@ -12,10 +12,12 @@ path = "src/lib.rs"
 num_enum = {version = "0.5.7"}
 strum = "0.24"
 enum_dispatch = "0.3.8"
+enum_derive = "0.1.7"
+custom_derive = "0.1.7"
 utf8-read = "0.4.0"
 strum_macros = "0.24.0"
-stickyimmix = {path = "../stickyimmix"}
-scanner-rust = "2.0.16"
+# stickyimmix = {path = "../stickyimmix"}
+# scanner-rust = "2.0.16"
 # comet = { git = "https://github.com/Starlight-JS/comet", branch = "multi-threaded" }
 # comet-extra = { git = "https://github.com/Starlight-JS/comet", branch = "multi-threaded"}
 

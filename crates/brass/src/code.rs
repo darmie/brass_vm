@@ -5,8 +5,7 @@ use crate::errors::{DecodeError, DecodeErrorKind};
 use crate::native::Native;
 use crate::op::{Op, Opcode, OP_NARGS};
 use crate::types::{
-    Constant, EnumConstruct, EnumType, FuncType, HLFunction, ObjField, ObjProto, ObjType, TypeKind,
-    ValueType, ValueTypeU, VirtualType,
+    Constant, EnumConstruct, HLFunction, ObjField, ObjProto, TypeKind, ValueType, ValueTypeU,
 };
 
 // Copyright 2022 Zenturi Software Co.
@@ -193,29 +192,34 @@ impl Code {
 
         t.kind = k.unwrap();
 
-        // println!("{:?}", t.kind);
-
         match t.kind {
             TypeKind::HFUN | TypeKind::HMETHOD => {
                 let nargs: usize = u8::decode(decoder)?.try_into().unwrap();
-                let mut fun = FuncType {
+                let mut fun = ValueTypeU::FuncType {
                     nargs,
                     args: Vec::new(),
                     ret: Box::new(ValueType::default()),
                 };
 
-                for i in 0..nargs {
-                    fun.args.insert(i, Code::get_type(decoder)?);
+                if let ValueTypeU::FuncType {
+                    ref mut args,
+                    ref mut ret,
+                    nargs,
+                } = fun
+                {
+                    for i in 0..nargs {
+                        (*args).insert(i, Code::get_type(decoder)?);
+                    }
+
+                    *ret = Box::new(Code::get_type(decoder)?);
                 }
 
-                fun.ret = Box::new(Code::get_type(decoder)?);
-
-                t.union = ValueTypeU::FuncType(fun);
+                t.union = fun;
             }
             TypeKind::HOBJ | TypeKind::HSTRUCT => {
                 let name = Code::read_ustring(decoder)?;
                 let super_index = INDEX(decoder)?;
-                let mut obj = ObjType {
+                let mut obj = ValueTypeU::ObjType {
                     name,
                     super_type: if super_index < 0 {
                         Box::new(ValueType::default())
@@ -240,87 +244,113 @@ impl Code {
                     rt: None,
                 };
 
-                for i in 0..obj.nfields {
-                    let name = Code::read_ustring(decoder)?;
-                    let field = ObjField {
-                        name,
-                        hashed_name: -1, // Todo: implement hash generator
-                        t: Code::get_type(decoder)?,
-                    };
+                if let ValueTypeU::ObjType {
+                    name: _,
+                    super_type: _,
+                    ref mut fields,
+                    nfields,
+                    nproto,
+                    nbindings,
+                    ref mut proto,
+                    ref mut bindings,
+                    global_value: _,
+                    rt: _,
+                } = obj
+                {
+                    for i in 0..nfields {
+                        let name = Code::read_ustring(decoder)?;
+                        let field = ObjField {
+                            name,
+                            hashed_name: -1, // Todo: implement hash generator
+                            t: Code::get_type(decoder)?,
+                        };
 
-                    obj.fields.insert(i, field);
-                }
-                for i in 0..obj.nproto {
-                    let obj_proto = ObjProto {
-                        name: Code::read_ustring(decoder)?,
-                        hashed_name: -1, // Todo: implement hash generator
-                        findex: UINDEX(decoder)?,
-                        pindex: INDEX(decoder)?,
-                    };
+                        (*fields).insert(i, field);
+                    }
+                    for i in 0..nproto {
+                        let obj_proto = ObjProto {
+                            name: Code::read_ustring(decoder)?,
+                            hashed_name: -1, // Todo: implement hash generator
+                            findex: UINDEX(decoder)?,
+                            pindex: INDEX(decoder)?,
+                        };
 
-                    obj.proto.insert(i, obj_proto);
-                }
-                for i in 0..obj.nbindings {
-                    obj.bindings
-                        .insert(i << 1, UINDEX(decoder)?.try_into().unwrap());
-                    obj.bindings
-                        .insert((i << 1) | 1, UINDEX(decoder)?.try_into().unwrap());
+                        (*proto).insert(i, obj_proto);
+                    }
+                    for i in 0..nbindings {
+                        (*bindings).insert(i << 1, UINDEX(decoder)?.try_into().unwrap());
+                        (*bindings).insert((i << 1) | 1, UINDEX(decoder)?.try_into().unwrap());
+                    }
                 }
 
-                t.union = ValueTypeU::ObjType(obj);
+                t.union = obj;
             }
             TypeKind::HREF => {
                 t.tparam = Some(Box::new(Code::get_type(decoder)?));
             }
             TypeKind::HVIRTUAL => {
                 let nfields = UINDEX(decoder)?;
-                let mut virt = VirtualType {
+                let mut virt = ValueTypeU::VirtualType {
                     nfields,
                     fields: Vec::new(),
                 };
 
-                for i in 0..nfields {
-                    let field = ObjField {
-                        name: Code::read_ustring(decoder)?,
-                        hashed_name: -1, // Todo: implement hash generator
-                        t: Code::get_type(decoder)?,
-                    };
+                if let ValueTypeU::VirtualType {
+                    nfields,
+                    ref mut fields,
+                } = virt
+                {
+                    for i in 0..nfields {
+                        let field = ObjField {
+                            name: Code::read_ustring(decoder)?,
+                            hashed_name: -1, // Todo: implement hash generator
+                            t: Code::get_type(decoder)?,
+                        };
 
-                    virt.fields.insert(i, field);
+                        (*fields).insert(i, field);
+                    }
                 }
 
-                t.union = ValueTypeU::VirtualType(virt);
+                t.union = virt;
             }
             TypeKind::HABSTRACT => {
                 t.abs_name = Some(Code::read_ustring(decoder)?);
             }
             TypeKind::HENUM => {
-                let mut tenum = EnumType {
+                let mut tenum = ValueTypeU::EnumType {
                     name: Code::read_ustring(decoder)?,
                     global_value: vec![&mut (UINDEX(decoder)?)], // Todo
                     nconstructs: UINDEX(decoder)?,
                     constructs: Vec::new(),
                 };
 
-                for i in 0..tenum.nconstructs {
-                    let name = Code::read_ustring(decoder)?;
-                    let nparams = UINDEX(decoder)?;
-                    let mut con = EnumConstruct {
-                        name,
-                        nparams,
-                        params: Vec::new(),
-                        offsets: Vec::new(),
-                        hasptr: false,
-                        size: 0,
-                    };
-                    for j in 0..nparams {
-                        con.params.insert(j, Code::get_type(decoder)?);
-                    }
+                if let ValueTypeU::EnumType {
+                    name: _,
+                    nconstructs,
+                    ref mut constructs,
+                    global_value: _,
+                } = tenum
+                {
+                    for i in 0..nconstructs {
+                        let name = Code::read_ustring(decoder)?;
+                        let nparams = UINDEX(decoder)?;
+                        let mut con = EnumConstruct {
+                            name,
+                            nparams,
+                            params: Vec::new(),
+                            offsets: Vec::new(),
+                            hasptr: false,
+                            size: 0,
+                        };
+                        for j in 0..nparams {
+                            con.params.insert(j, Code::get_type(decoder)?);
+                        }
 
-                    tenum.constructs.insert(i, con);
+                        (*constructs).insert(i, con);
+                    }
                 }
 
-                t.union = ValueTypeU::EnumType(tenum);
+                t.union = tenum;
             }
             TypeKind::HNULL | TypeKind::HPACKED => {
                 t.tparam = Some(Box::new(Code::get_type(decoder)?));
@@ -357,9 +387,7 @@ impl Code {
 
         for i in 0..nstrings {
             let sz: usize = UINDEX(decoder)?;
-            // println!("size {:?}", sz);
             let s = String::from_utf8_lossy(&sdata[..sz]).to_string();
-            // println!("string {}", s);
             strings.insert(i, s);
 
             out_lens.insert(i, sz);
@@ -409,53 +437,55 @@ impl Code {
             return Ok(res);
         }
 
-        let op = Op::try_from(n).unwrap();
-
+        let op: Op = n.try_into().unwrap();
+        res.op = op;
         let i = OP_NARGS.into_iter().nth(n.try_into().unwrap()).unwrap();
         match i {
             0 => {}
             1 => {
-                res.p1 = INDEX(decoder)?;
+                res.p1 = Some(INDEX(decoder)?);
             }
             2 => {
-                res.p1 = INDEX(decoder)?;
-                res.p2 = INDEX(decoder)?;
+                res.p1 = Some(INDEX(decoder)?);
+                res.p2 = Some(INDEX(decoder)?);
             }
             3 => {
-                res.p1 = INDEX(decoder)?;
-                res.p2 = INDEX(decoder)?;
-                res.p3 = INDEX(decoder)?;
+                res.p1 = Some(INDEX(decoder)?);
+                res.p2 = Some(INDEX(decoder)?);
+                res.p3 = Some(INDEX(decoder)?);
             }
             4 => {
-                res.p1 = INDEX(decoder)?;
-                res.p2 = INDEX(decoder)?;
-                res.p3 = INDEX(decoder)?;
+                res.p1 = Some(INDEX(decoder)?);
+                res.p2 = Some(INDEX(decoder)?);
+                res.p3 = Some(INDEX(decoder)?);
                 let i: isize = INDEX(decoder)?.try_into().unwrap(); // not sure if this is necessary
                 res.extra.insert(0, i.try_into().unwrap());
             }
-            -1 => match op {
+            -1 => match res.op {
                 Op::OCallN | Op::OCallClosure | Op::OCallMethod | Op::OCallThis | Op::OMakeEnum => {
-                    res.p1 = INDEX(decoder)?;
-                    res.p2 = INDEX(decoder)?;
-                    res.p3 = u8::decode(decoder)?.into();
-                    let extra = vec![0; res.p3.try_into().unwrap()];
+                    res.p1 = Some(INDEX(decoder)?);
+                    res.p2 = Some(INDEX(decoder)?);
+                    let p3 = u8::decode(decoder)?.into();
+                    res.p3 = Some(p3);
+                    let extra = vec![0; p3.try_into().unwrap()];
                     res.extra = extra;
 
-                    for i in 0..res.p3 {
+                    for i in 0..p3 {
                         res.extra.insert(i.try_into().unwrap(), INDEX(decoder)?);
                     }
                 }
                 Op::OSwitch => {
-                    res.p1 = UINDEX(decoder)?.try_into().unwrap();
-                    res.p2 = UINDEX(decoder)?.try_into().unwrap();
+                    res.p1 = Some(UINDEX(decoder)?.try_into().unwrap());
+                    let p2 = UINDEX(decoder)?.try_into().unwrap();
+                    res.p2 = Some(p2);
 
-                    res.extra = vec![0; res.p2.try_into().unwrap()];
+                    res.extra = vec![0; p2.try_into().unwrap()];
 
-                    for i in 0..res.p2 {
+                    for i in 0..p2 {
                         res.extra
                             .insert(i.try_into().unwrap(), UINDEX(decoder)?.try_into().unwrap());
                     }
-                    res.p3 = UINDEX(decoder)?.try_into().unwrap();
+                    res.p3 = Some(UINDEX(decoder)?.try_into().unwrap());
                 }
                 _ => {
                     return Err(DecodeError::with_info(
@@ -466,9 +496,9 @@ impl Code {
             },
             _ => {
                 let size = OP_NARGS.into_iter().nth(n.try_into().unwrap()).unwrap() - 3;
-                res.p1 = INDEX(decoder)?;
-                res.p2 = INDEX(decoder)?;
-                res.p3 = INDEX(decoder)?;
+                res.p1 = Some(INDEX(decoder)?);
+                res.p2 = Some(INDEX(decoder)?);
+                res.p3 = Some(INDEX(decoder)?);
 
                 res.extra = vec![0; size.try_into().unwrap()];
 

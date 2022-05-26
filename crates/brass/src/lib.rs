@@ -1,4 +1,6 @@
-#[allow(arithmetic_overflow)]
+// #[allow(arithmetic_overflow)]
+
+
 // Copyright 2022 Zenturi Software Co.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,6 +16,11 @@
 // limitations under the License.
 
 // extern crate stickyimmix;
+
+extern crate custom_derive;
+
+#[macro_use]
+extern crate enum_derive;
 
 
 mod op;

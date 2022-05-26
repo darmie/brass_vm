@@ -2,9 +2,10 @@ use std::any::Any;
 
 use num_enum::IntoPrimitive;
 use num_enum::TryFromPrimitive;
+use strum_macros::Display;
 
-use crate::op::Op;
 use crate::op::Opcode;
+use strum_macros::IntoStaticStr;
 
 // Copyright 2022 Zenturi Software Co.
 //
@@ -20,9 +21,7 @@ use crate::op::Opcode;
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[derive(Clone, Copy)]
-#[derive(Debug)]
-#[derive(IntoPrimitive, TryFromPrimitive)]
+#[derive(Debug, Clone, Copy, IntoPrimitive, TryFromPrimitive, IntoStaticStr)]
 #[repr(u8)]
 pub enum TypeKind {
     HVOID = 0,
@@ -52,123 +51,101 @@ pub enum TypeKind {
     HLAST = 23,
     // HForceInt = 0x7FFFFFFF,
 }
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Debug, Clone, Display)]
 pub enum ValueTypeU {
-    FuncType(FuncType),
-    ObjType(ObjType),
-    VirtualType(VirtualType),
-    EnumType(EnumType),
+    FuncType {
+        args: Vec<ValueType>,
+        nargs: usize,
+        ret: Box<ValueType>,
+    },
+    ObjType {
+        name: String,
+        super_type: Box<ValueType>,
+        fields: Vec<ObjField>,
+        nfields: usize,
+        nproto: usize,
+        nbindings: usize,
+        proto: Vec<ObjProto>,
+        bindings: Vec<u32>,
+        global_value: Vec<*mut dyn Any>,
+        rt: Option<RuntimeObj>,
+    },
+    VirtualType {
+        nfields: usize,
+        fields: Vec<ObjField>,
+    },
+    EnumType {
+        name: String,
+        nconstructs: usize,
+        constructs: Vec<EnumConstruct>,
+        global_value: Vec<*mut dyn Any>,
+    },
     Ref(Box<ValueType>),
     Abstract(String),
-    Null(()),
-    Void(()),
+    Null,
+    Void,
 }
 
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ValueType {
     pub union: ValueTypeU,
     pub abs_name: Option<String>,
     pub tparam: Option<Box<ValueType>>,
-    pub kind:TypeKind,
+    pub kind: TypeKind,
 }
 
 impl ValueType {
     pub fn default() -> Self {
-        return ValueType { union: ValueTypeU::Null(()), abs_name: None, tparam: None, kind: TypeKind::HNULL }
+        ValueType {
+            union: ValueTypeU::Null,
+            abs_name: None,
+            tparam: None,
+            kind: TypeKind::HNULL,
+        }
     }
 }
 
-#[derive(Clone)]
-#[derive(Debug)]
-pub struct FuncType {
-    pub args: Vec<ValueType>,
-    pub nargs: usize,
-    pub ret: Box<ValueType>,
-}
-
-
-
-#[derive(Clone)]
-#[derive(Debug)]
-pub struct ObjType {
-    pub name: String,
-    pub super_type: Box<ValueType>,
-    pub fields: Vec<ObjField>,
-    pub nfields:usize,
-    pub nproto:usize,
-    pub nbindings:usize,
-    pub proto: Vec<ObjProto>,
-    pub bindings: Vec<u32>,
-    pub global_value: Vec<*mut dyn Any>,
-    pub rt:Option<RuntimeObj>
-}
-
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ObjField {
-    pub name:String,
-    pub hashed_name:i32,
-    pub t:ValueType
+    pub name: String,
+    pub hashed_name: i32,
+    pub t: ValueType,
 }
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ObjProto {
-    pub name:String,
-    pub hashed_name:i32,
-    pub findex:usize,
-    pub pindex:i32
+    pub name: String,
+    pub hashed_name: i32,
+    pub findex: usize,
+    pub pindex: i32,
 }
 
-#[derive(Clone)]
-#[derive(Debug)]
-pub struct VirtualType {
-    pub nfields:usize,
-    pub fields:Vec<ObjField>,
-}
-
-#[derive(Clone)]
-#[derive(Debug)]
-pub struct EnumType {
-    pub name:String,
-    pub nconstructs:usize,
-    pub constructs:Vec<EnumConstruct>,
-    pub global_value: Vec<*mut dyn Any>
-}
-
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct EnumConstruct {
-    pub name:String,
-    pub nparams:usize,
-    pub params:Vec<ValueType>,
-    pub size:usize,
-    pub hasptr:bool,
-    pub offsets:Vec<i32>
+    pub name: String,
+    pub nparams: usize,
+    pub params: Vec<ValueType>,
+    pub size: usize,
+    pub hasptr: bool,
+    pub offsets: Vec<i32>,
 }
 
-
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct RuntimeObj {}
 
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct HLFunction {
-    pub t:ValueType,
-    pub findex:usize,
-    pub nregs:usize,
-    pub nops:usize,
-    pub regs:Vec<ValueType>,
-    pub ops:Vec<Opcode>,
-    pub debug:Vec<i32>
+    pub t: ValueType,
+    pub findex: usize,
+    pub nregs: usize,
+    pub nops: usize,
+    pub regs: Vec<ValueType>,
+    pub ops: Vec<Opcode>,
+    pub debug: Vec<i32>,
 }
 
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Constant {
-    pub global:u32,
-    pub nfields:usize,
-    pub fields:Vec::<u32>,
+    pub global: u32,
+    pub nfields: usize,
+    pub fields: Vec<u32>,
 }
