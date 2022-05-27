@@ -15,7 +15,7 @@
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use strum_macros::IntoStaticStr;
 
-#[derive(Clone, Debug, PartialEq, Eq, TryFromPrimitive, IntoStaticStr)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, TryFromPrimitive, IntoStaticStr)]
 #[repr(u8)]
 pub enum Op {
     OMov = 0,
@@ -142,12 +142,13 @@ pub static OP_NARGS: [i8; 100] = [
 ];
 
 #[derive(Clone, Debug)]
+#[derive(PartialEq)]
 pub struct Opcode {
     pub op: Op,
     pub p1: Option<i32>,
     pub p2: Option<i32>,
     pub p3: Option<i32>,
-    pub extra: Vec<i32>,
+    pub extra: Vec<isize>,
 }
 
 impl Opcode {

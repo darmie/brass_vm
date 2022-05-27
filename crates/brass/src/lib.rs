@@ -28,5 +28,6 @@ mod types;
 mod decoder;
 mod errors;
 mod code;
+mod code_hash;
 mod native;
 
