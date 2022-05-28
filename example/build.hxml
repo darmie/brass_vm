@@ -1,4 +1,4 @@
 -cp ./src
---dce no
+--dce full
 -m Main
 --hl bin/test.hl

@@ -1,3 +1,5 @@
+#![allow(arithmetic_overflow)]
+
 use crate::{
     code::Code,
     errors::{DecodeError, DecodeErrorKind},
@@ -53,25 +55,24 @@ impl<'input> Decoder<'input> {
         }
     }
 
-    pub fn read_index(&mut self, buf: &mut [u8]) -> Result<i32, DecodeError> {
+    pub fn read_index(&mut self) -> Result<i32, DecodeError> {
         let b = u8::decode(self)?;
         if (b & 0x80) == 0 {
             return Ok((b & 0x7F).into());
         }
         if (b & 0x40) == 0 {
-            let v: u32 = (u8::decode(self)? | (b & 31)).into();
-            return Ok(v.try_into().unwrap());
+            let _b:i32 = (b & 31).into();
+            let x:i32 = u8::decode(self).unwrap().into();
+            let i:i32 =  x | (_b << 8);
+            let v: i32 = i;
+            return Ok(if (b & 0x20) == 0 {v}else{-v});
         }
         {
             let c = u8::decode(self)?;
             let d = u8::decode(self)?;
             let e = u8::decode(self)?;
 
-            // let v =  ((b & 31) << 24)  | (c << 16) | (d << 8) | e;
-            let v = vec![b, c, d, e];
-            let mut u = <[u8; 4]>::default();
-            u.copy_from_slice(&v[..]);
-            let i = i32::from_be_bytes(u); // << Doesn't feel right!
+            let i =  i32::from_le_bytes([b, c, d, e]);
             Ok(i)
         }
     }
@@ -116,4 +117,3 @@ impl<'input> Decode<'input> for f64 {
         Ok(f64::from_bits(bits))
     }
 }
-

@@ -9,6 +9,9 @@ edition = "2021"
 path = "src/lib.rs"
 
 [dependencies]
+cranelift = "0.84.0"
+cranelift-module = "0.84.0"
+cranelift-jit = "0.84.0"
 num_enum = {version = "0.5.7"}
 strum = "0.24"
 enum_dispatch = "0.3.8"

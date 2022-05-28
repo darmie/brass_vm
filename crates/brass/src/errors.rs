@@ -12,9 +12,11 @@ pub enum DecodeErrorKind {
     InvalidStringIndex,
     InvalidString,
     NegativeIndex,
+    InvalidDebugFile,
+    OutsideRange
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Copy)]
 pub struct DecodeError {
     kind: DecodeErrorKind,
     position: Option<usize>,
